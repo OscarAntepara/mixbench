@@ -1,6 +1,6 @@
 This repository add some changes to enable control and datapath energy analysis.
 
-OLD MIXBENCH REPO:
+OLD MIXBENCH README:
 
 # mixbench
 The purpose of this benchmark tool is to evaluate performance bounds of GPUs (or CPUs) on mixed operational intensity kernels. The executed kernel is customized on a range of different operational intensity values. Modern GPUs are able to hide memory latency by switching execution to threads able to perform compute operations. Using this tool one can assess the practical optimum balance in both types of operations for a compute device. CUDA, HIP, OpenCL and SYCL implementations have been developed, targeting GPUs, or OpenMP when using a CPU as a target.
