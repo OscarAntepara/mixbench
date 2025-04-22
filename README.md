@@ -5,7 +5,7 @@ Compiling the code will require CMake. Addtionally, mixbench-cuda and mixbench-h
 * Test requires three args. 
 * First arg (0/1) ==> zero/random data 
 * Second arg (0/1/2/3) ==> FP64/FP32/FP16/INT32 
-* Third arg (0/1) ==> orig/running longer for power measurement
+* Third arg (0/1) ==> original implementation/running longer for power measurement
 
 Inside mixbench-cuda and mixbench-hip, there are scripts `run_script.sh` to execute mixbench and nvdia-smi or amd-smi in the background.
 Finally, a new directory `gemms_cublas` has been added to test GEMMS on NVIDIA GPUs.
