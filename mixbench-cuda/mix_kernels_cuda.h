@@ -6,5 +6,5 @@
 
 #pragma once
 
-extern "C" void mixbenchGPU(double*, long size);
+extern "C" void mixbenchGPU(double*, long size, int data_type, int run_long);
 
