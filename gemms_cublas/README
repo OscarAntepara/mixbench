@@ -1,0 +1,9 @@
+To build for FP64, FP32, and FP16 with zero values:
+FP64: make -B PRECISION=2
+FP32: make -B PRECISION=1
+FP16: make -B PRECISION=3
+
+To do it with random values:
+FP64: make -B PRECISION=2 RANDOM=1
+FP32: make -B PRECISION=1 RANDOM=1
+FP16: make -B PRECISION=3 RANDOM=1
