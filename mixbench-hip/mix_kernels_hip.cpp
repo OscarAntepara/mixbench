@@ -113,7 +113,7 @@ void runbench_warmup(double* cd, long size) {
 }
 
 template <unsigned int compute_iterations>
-void runbench(double* cd, long size) {
+void runbench(double* cd, long size, int data_type, int run_long) {
   const long compute_grid_size = size / ELEMENTS_PER_THREAD;
   const int BLOCK_SIZE = 256;
   const int TOTAL_BLOCKS = compute_grid_size / BLOCK_SIZE;
@@ -127,60 +127,32 @@ void runbench(double* cd, long size) {
   dim3 dimGrid(TOTAL_BLOCKS, 1, 1);
   hipEvent_t start, stop;
 
+  constexpr auto total_bench_iterations_long = 100000;
   constexpr auto total_bench_iterations = 3;
 
-  float kernel_time_mad_sp = benchmark<total_bench_iterations>([&]() {
-    initializeEvents_ext(&start, &stop);
-    hipExtLaunchKernelGGL(
-        HIP_KERNEL_NAME(benchmark_func<float, BLOCK_SIZE, ELEMENTS_PER_THREAD,
-                                       compute_iterations>),
-        dim3(dimGrid), dim3(dimBlock), 0, 0, start, stop, 0, 1.0f, (float*)cd);
-    return finalizeEvents_ext(start, stop);
-  });
-
-  float kernel_time_mad_sp2 = benchmark<total_bench_iterations>([&]() {
-    initializeEvents_ext(&start, &stop);
-    hipExtLaunchKernelGGL(
-        HIP_KERNEL_NAME(benchmark_func<float2, BLOCK_SIZE, ELEMENTS_PER_THREAD,
-                                       compute_iterations>),
-        dim3(dimGrid), dim3(dimBlock), 0, 0, start, stop, 0, float2{1.0f},
-        (float2*)cd);
-    return finalizeEvents_ext(start, stop);
-  });
-
-  float kernel_time_mad_dp = benchmark<total_bench_iterations>([&]() {
-    initializeEvents_ext(&start, &stop);
-    hipExtLaunchKernelGGL(
-        HIP_KERNEL_NAME(benchmark_func<double, BLOCK_SIZE, ELEMENTS_PER_THREAD,
-                                       compute_iterations>),
-        dim3(dimGrid), dim3(dimBlock), 0, 0, start, stop, 0, 1.0, cd);
-    return finalizeEvents_ext(start, stop);
-  });
-
-  float kernel_time_mad_hp = benchmark<total_bench_iterations>([&]() {
-    initializeEvents_ext(&start, &stop);
-    half2 h_ones(1.0f);
-    hipExtLaunchKernelGGL(
-        HIP_KERNEL_NAME(benchmark_func<half2, BLOCK_SIZE, ELEMENTS_PER_THREAD,
-                                       compute_iterations>),
-        dim3(dimGrid), dim3(dimBlock), 0, 0, start, stop, 0, h_ones,
-        (half2*)cd);
-    return finalizeEvents_ext(start, stop);
-  });
-
-  float kernel_time_mad_int = benchmark<total_bench_iterations>([&]() {
-    initializeEvents_ext(&start, &stop);
-    hipExtLaunchKernelGGL(
-        HIP_KERNEL_NAME(benchmark_func<int, BLOCK_SIZE, ELEMENTS_PER_THREAD,
-                                       compute_iterations>),
-        dim3(dimGrid), dim3(dimBlock), 0, 0, start, stop, 0, 1, (int*)cd);
-    return finalizeEvents_ext(start, stop);
-  });
-
-  printf(
-      "         %4d,   %8.3f,%8.2f,%8.2f,%7.2f,   %8.3f,%8.2f,%8.2f,%7.2f,   "
-      "%8.3f,%8.2f,%8.2f,%7.2f,   %8.3f,%8.2f,%8.2f,%7.2f,  "
-      "%8.3f,%8.2f,%8.2f,%7.2f\n",
+  if (data_type==1){
+    float kernel_time_mad_sp = 0.0;
+    if (run_long){
+      kernel_time_mad_sp = benchmark<total_bench_iterations_long>([&]() {
+        initializeEvents_ext(&start, &stop);
+        hipExtLaunchKernelGGL(
+          HIP_KERNEL_NAME(benchmark_func<float, BLOCK_SIZE, ELEMENTS_PER_THREAD,
+                                         compute_iterations>),
+          dim3(dimGrid), dim3(dimBlock), 0, 0, start, stop, 0, -2.0f, (float*)cd);
+        return finalizeEvents_ext(start, stop);
+      });
+    }else{
+      kernel_time_mad_sp = benchmark<total_bench_iterations>([&]() {
+        initializeEvents_ext(&start, &stop);
+        hipExtLaunchKernelGGL(
+          HIP_KERNEL_NAME(benchmark_func<float, BLOCK_SIZE, ELEMENTS_PER_THREAD,
+                                         compute_iterations>),
+          dim3(dimGrid), dim3(dimBlock), 0, 0, start, stop, 0, -2.0f, (float*)cd);
+        return finalizeEvents_ext(start, stop);
+      });
+    }
+    printf(
+      "         %4d,   %8.3f, %8.2f, %8.2f, %7.2f\n",
       compute_iterations,
       // SP
       ((double)computations) / ((double)memoryoperations * sizeof(float)),
@@ -188,28 +160,108 @@ void runbench(double* cd, long size) {
       ((double)computations) / kernel_time_mad_sp * 1000. /
           (double)(1000 * 1000 * 1000),
       ((double)memoryoperations * sizeof(float)) / kernel_time_mad_sp * 1000. /
-          (1000. * 1000. * 1000.),
-      // Packed SP
-      ((double)2 * computations) / ((double)memoryoperations * sizeof(float2)),
-      kernel_time_mad_sp2,
-      ((double)2 * computations) / kernel_time_mad_sp2 * 1000. /
-          (double)(1000 * 1000 * 1000),
-      ((double)memoryoperations * sizeof(float2)) / kernel_time_mad_sp2 *
-          1000. / (1000. * 1000. * 1000.),
+          (1000. * 1000. * 1000.)   
+          );
+    
+  }
+
+  if (data_type==0){
+    float kernel_time_mad_dp = 0.0;
+    if (run_long){
+      kernel_time_mad_dp = benchmark<total_bench_iterations_long>([&]() {
+        initializeEvents_ext(&start, &stop);
+        hipExtLaunchKernelGGL(
+          HIP_KERNEL_NAME(benchmark_func<double, BLOCK_SIZE, ELEMENTS_PER_THREAD,
+                                         compute_iterations>),
+          dim3(dimGrid), dim3(dimBlock), 0, 0, start, stop, 0, -2.0f, cd);
+        return finalizeEvents_ext(start, stop);
+      });
+    }else{
+      kernel_time_mad_dp = benchmark<total_bench_iterations>([&]() {
+        initializeEvents_ext(&start, &stop);
+        hipExtLaunchKernelGGL(
+          HIP_KERNEL_NAME(benchmark_func<double, BLOCK_SIZE, ELEMENTS_PER_THREAD,
+                                         compute_iterations>),
+          dim3(dimGrid), dim3(dimBlock), 0, 0, start, stop, 0, -2.0f, cd);
+        return finalizeEvents_ext(start, stop);
+      });
+    }
+    printf(
+      "         %4d,   %8.3f, %8.2f, %8.2f, %7.2f\n",
+      compute_iterations,
       // DP
       ((double)computations) / ((double)memoryoperations * sizeof(double)),
       kernel_time_mad_dp,
       ((double)computations) / kernel_time_mad_dp * 1000. /
           (double)(1000 * 1000 * 1000),
       ((double)memoryoperations * sizeof(double)) / kernel_time_mad_dp * 1000. /
-          (1000. * 1000. * 1000.),
+          (1000. * 1000. * 1000.)
+          );
+  
+  }
+  
+  if (data_type==2){
+    float kernel_time_mad_hp = 0.0;
+    if (run_long){
+      kernel_time_mad_hp = benchmark<total_bench_iterations_long>([&]() {
+        initializeEvents_ext(&start, &stop);
+        half2 h_ones(-2.0f);
+        hipExtLaunchKernelGGL(
+          HIP_KERNEL_NAME(benchmark_func<half2, BLOCK_SIZE, ELEMENTS_PER_THREAD,
+                                       compute_iterations>),
+          dim3(dimGrid), dim3(dimBlock), 0, 0, start, stop, 0, h_ones,
+          (half2*)cd);
+        return finalizeEvents_ext(start, stop);
+      });
+    }else{	  
+      kernel_time_mad_hp = benchmark<total_bench_iterations>([&]() {
+        initializeEvents_ext(&start, &stop);
+        half2 h_ones(-2.0f);
+        hipExtLaunchKernelGGL(
+          HIP_KERNEL_NAME(benchmark_func<half2, BLOCK_SIZE, ELEMENTS_PER_THREAD,
+                                       compute_iterations>),
+          dim3(dimGrid), dim3(dimBlock), 0, 0, start, stop, 0, h_ones,
+          (half2*)cd);
+        return finalizeEvents_ext(start, stop);
+      });
+    }
+    printf(
+      "         %4d,   %8.3f, %8.2f, %8.2f, %7.2f\n",
+      compute_iterations,
       // Packed HP
       ((double)2 * computations) / ((double)memoryoperations * sizeof(half2)),
       kernel_time_mad_hp,
       ((double)2 * computations) / kernel_time_mad_hp * 1000. /
           (double)(1000 * 1000 * 1000),
       ((double)memoryoperations * sizeof(half2)) / kernel_time_mad_hp * 1000. /
-          (1000. * 1000. * 1000.),
+          (1000. * 1000. * 1000.)
+      ); 
+  }
+
+  if (data_type==3){
+    float kernel_time_mad_int = 0.0;
+    if (run_long){
+      kernel_time_mad_int = benchmark<total_bench_iterations_long>([&]() {
+        initializeEvents_ext(&start, &stop);
+        hipExtLaunchKernelGGL(
+          HIP_KERNEL_NAME(benchmark_func<int, BLOCK_SIZE, ELEMENTS_PER_THREAD,
+                                       compute_iterations>),
+          dim3(dimGrid), dim3(dimBlock), 0, 0, start, stop, 0, -2, (int*)cd);
+        return finalizeEvents_ext(start, stop);
+      });
+    }else{	  
+      kernel_time_mad_int = benchmark<total_bench_iterations>([&]() {
+        initializeEvents_ext(&start, &stop);
+        hipExtLaunchKernelGGL(
+          HIP_KERNEL_NAME(benchmark_func<int, BLOCK_SIZE, ELEMENTS_PER_THREAD,
+                                       compute_iterations>),
+          dim3(dimGrid), dim3(dimBlock), 0, 0, start, stop, 0, -2, (int*)cd);
+        return finalizeEvents_ext(start, stop);
+      });
+    }
+    printf(
+      "         %4d,   %8.3f, %8.2f, %8.2f, %7.2f\n",
+      compute_iterations,
       // Int
       ((double)computations) / ((double)memoryoperations * sizeof(int)),
       kernel_time_mad_int,
@@ -217,9 +269,11 @@ void runbench(double* cd, long size) {
           (double)(1000 * 1000 * 1000),
       ((double)memoryoperations * sizeof(int)) / kernel_time_mad_int * 1000. /
           (1000. * 1000. * 1000.));
+  
+  }
 }
 
-extern "C" void mixbenchGPU(double* c, long size) {
+extern "C" void mixbenchGPU(double* c, long size, int data_type, int run_long) {
   const char* benchtype = "compute with global memory (block strided)";
 
   printf("Trade-off type:       %s\n", benchtype);
@@ -236,56 +290,58 @@ extern "C" void mixbenchGPU(double* c, long size) {
   // Synchronize in order to wait for memory operations to finish
   HIP_SAFE_CALL(hipDeviceSynchronize());
 
+  // Copy results to device memory
+  HIP_SAFE_CALL(hipMemcpy(cd, c, size * sizeof(double), hipMemcpyHostToDevice));
+  HIP_SAFE_CALL(hipDeviceSynchronize());
+
   printf(
       "------------------------------------------------------------------------"
       "----- CSV data "
       "------------------------------------------------------------------------"
       "-------------------------------------------\n");
   printf(
-      "Experiment ID, Single Precision ops,,,,              Packed Single "
-      "Precision ops,,,,       Double precision ops,,,,              Half "
-      "precision ops,,,,                Integer operations,,, \n");
+      "Experiment ID, "
+      "ops,,,, "
+      " \n");
   printf(
-      "Compute iters, Flops/byte, ex.time,  GFLOPS, GB/sec, Flops/byte, "
-      "ex.time,  GFLOPS, GB/sec, Flops/byte, ex.time,  GFLOPS, GB/sec, "
-      "Flops/byte, ex.time,  GFLOPS, GB/sec, Iops/byte, ex.time,   GIOPS, "
-      "GB/sec\n");
+      "Compute iters, Flops/byte, ex.time,  GFLOPS, GB/sec, "
+      "\n");
 
   runbench_warmup(cd, size);
 
-  runbench<0>(cd, size);
-  runbench<1>(cd, size);
-  runbench<2>(cd, size);
-  runbench<3>(cd, size);
-  runbench<4>(cd, size);
-  runbench<5>(cd, size);
-  runbench<6>(cd, size);
-  runbench<7>(cd, size);
-  runbench<8>(cd, size);
-  runbench<9>(cd, size);
-  runbench<10>(cd, size);
-  runbench<11>(cd, size);
-  runbench<12>(cd, size);
-  runbench<13>(cd, size);
-  runbench<14>(cd, size);
-  runbench<15>(cd, size);
-  runbench<16>(cd, size);
-  runbench<17>(cd, size);
-  runbench<18>(cd, size);
-  runbench<20>(cd, size);
-  runbench<22>(cd, size);
-  runbench<24>(cd, size);
-  runbench<28>(cd, size);
-  runbench<32>(cd, size);
-  runbench<40>(cd, size);
-  runbench<48>(cd, size);
-  runbench<56>(cd, size);
-  runbench<64>(cd, size);
-  runbench<80>(cd, size);
-  runbench<96>(cd, size);
-  runbench<128>(cd, size);
-  runbench<256>(cd, size);
-  runbench<512>(cd, size);
+  runbench<0>(cd, size, data_type, run_long);
+  runbench<1>(cd, size, data_type, run_long);
+  runbench<2>(cd, size, data_type, run_long);
+  runbench<3>(cd, size, data_type, run_long);
+  runbench<4>(cd, size, data_type, run_long);
+  runbench<5>(cd, size, data_type, run_long);
+  runbench<6>(cd, size, data_type, run_long);
+  runbench<7>(cd, size, data_type, run_long);
+  runbench<8>(cd, size, data_type, run_long);
+  runbench<9>(cd, size, data_type, run_long);
+  runbench<10>(cd, size, data_type, run_long);
+  runbench<11>(cd, size, data_type, run_long);
+  runbench<12>(cd, size, data_type, run_long);
+  runbench<13>(cd, size, data_type, run_long);
+  runbench<14>(cd, size, data_type, run_long);
+  runbench<15>(cd, size, data_type, run_long);
+  runbench<16>(cd, size, data_type, run_long);
+  runbench<17>(cd, size, data_type, run_long);
+  runbench<18>(cd, size, data_type, run_long);
+  runbench<20>(cd, size, data_type, run_long);
+  runbench<22>(cd, size, data_type, run_long);
+  runbench<24>(cd, size, data_type, run_long);
+  runbench<28>(cd, size, data_type, run_long);
+  runbench<32>(cd, size, data_type, run_long);
+  runbench<40>(cd, size, data_type, run_long);
+  runbench<48>(cd, size, data_type, run_long);
+  runbench<56>(cd, size, data_type, run_long);
+  runbench<64>(cd, size, data_type, run_long);
+  runbench<80>(cd, size, data_type, run_long);
+  runbench<96>(cd, size, data_type, run_long);
+  runbench<128>(cd, size, data_type, run_long);
+  runbench<256>(cd, size, data_type, run_long);
+  runbench<512>(cd, size, data_type, run_long);
 
   printf(
       "------------------------------------------------------------------------"
