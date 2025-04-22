@@ -1,4 +1,13 @@
 This repository add some changes to enable control and datapath energy analysis.
+For NVIDIA GPUs, load nvhpc or the nvidia libraries. For AMD GPUs, load rocm.
+Compiling the code will require CMake. Addtionally, mixbench-cuda and mixbench-hip will require arguments as follows:
+Test requires three args. 
+First arg (0/1) ==> zero/random data 
+Second arg (0/1/2/3) ==> FP64/FP32/FP16/INT32 
+Third arg (0/1) ==> orig/running longer for power measurement
+
+Inside mixbench-cuda and mixbench-hip, there are scripts `run_script.sh` to execute mixbench and nvdia-smi or amd-smi in the background.
+Finally, a new directory `gemms_cublas` has been added to test GEMMS on NVIDIA GPUs.
 
 OLD MIXBENCH README:
 
