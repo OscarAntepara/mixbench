@@ -21,7 +21,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 project(mixbench-cpu LANGUAGES CXX)
 
 set(CMAKE_CXX_EXTENSIONS OFF)
-include_directories("../include")
+include_directories("../../include")
 
 if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
   MESSAGE(STATUS "GNU C++ compiler is used")
@@ -73,7 +73,7 @@ set(CMAKE_CXX_COMPILER ${HIP_HIPCC_EXECUTABLE})
 set(CMAKE_CXX_LINKER   ${HIP_HIPCC_EXECUTABLE})
 set(CMAKE_BUILD_TYPE Release)
 
-include_directories("../include")
+include_directories("../../include")
 include_directories("/opt/rocm/include/roctracer/")
 link_directories("/shared/apps/rhel8/opt/rocm-6.3.2/lib/libroctx64.so")
 
