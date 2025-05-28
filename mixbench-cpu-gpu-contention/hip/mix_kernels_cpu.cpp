@@ -36,7 +36,8 @@ typedef __half2 half2;
 #include "/shared/apps/rhel8/opt/rocm-6.3.2/include/roctracer/roctx.h"
 
 #define ELEMENTS_PER_THREAD (8)
-#define CPU_COMPUTE_ITERS_CONTENTION (2)
+#define CPU_COMPUTE_ITERS_CONTENTION (80)
+#define GPU_COMPUTE_ITERS_CONTENTION (320)
 
 
 const auto base_omp_get_max_threads = omp_get_max_threads();
@@ -69,6 +70,7 @@ Element __attribute__((noinline)) bench_block(Element* data) {
 
   Element f[] = {data[0], data[1], data[2], data[3],
                  data[4], data[5], data[6], data[7]};
+
 
 #pragma omp simd aligned(data : 64) reduction(+ : sum)
   for (size_t i = 0; i < static_chunk_size; i++) {
@@ -124,7 +126,7 @@ auto measure_operation(Op op) {
 
 template <typename Op>
 auto benchmark_max_omp(Op op) {
-  constexpr int total_runs = 20;
+  constexpr int total_runs = 10;
 
   auto duration = op();  // drop first measurement
   std::vector<decltype(duration)> measurements;
@@ -143,7 +145,7 @@ auto benchmark_max_omp(Op op) {
 
 template <typename Op>
 auto benchmark_omp(Op op) {
-  constexpr int total_runs = 20;
+  constexpr int total_runs = 10;
   constexpr int total_half_thread_runs = 20;
 
   auto duration = op();  // drop first measurement
@@ -316,7 +318,7 @@ void runbench(double* c, size_t size) {
   // floating point part (double prec)
   auto kernel_time_mad_dp = benchmark_omp([&] {
     return measure_operation([&] {
-      bench<double, compute_iterations>(cs.element_count<double>(), 1., -1., c);
+      bench<double, compute_iterations>(cs.element_count<double>(), 1., -2., c);
     });
   });
   const auto computations_dp = cs.compute_ops<double>();
@@ -365,10 +367,10 @@ void runbench_iters_gpu(double* cd, double* c, long size, int& num_iters) {
     }
     auto kernel_time_mad_dp = benchmark_max_omp([&] {
       return measure_operation([&] {
-        bench<double, compute_iterations_cpu>(cs.element_count<double>(), 1., -1., c);
+        bench<double, compute_iterations_cpu>(cs.element_count<double>(), 1., -2., c);
       });
     });
-    return 21*kernel_time_mad_dp/finalizeEvents_ext(start[0], stop[0]);
+    return 11*kernel_time_mad_dp/finalizeEvents_ext(start[0], stop[0]);
   });
   num_iters=kernel_time_mad_dp_gpu;
 }
@@ -396,7 +398,7 @@ void runbench_gpu(double* cd, long size) {
     hipExtLaunchKernelGGL(
         HIP_KERNEL_NAME(benchmark_func<double, BLOCK_SIZE, ELEMENTS_PER_THREAD,
                                        compute_iterations_gpu>),
-        dim3(dimGrid), dim3(dimBlock), 0, 0, start[0], stop[0], 0, 1.0f, cd);
+        dim3(dimGrid), dim3(dimBlock), 0, 0, start[0], stop[0], 0, -2.0f, cd);
     return finalizeEvents_ext(start[0], stop[0]);
   });
 
@@ -446,7 +448,7 @@ void runbench_cpu_gpu_cont(double* cd, double* c, long size) {
     hipExtLaunchKernelGGL(
         HIP_KERNEL_NAME(benchmark_func<double, BLOCK_SIZE, ELEMENTS_PER_THREAD,
                                        compute_iterations_gpu>),
-        dim3(dimGrid), dim3(dimBlock), 0, 0, start[0], stop[0], 0, 1.0f, cd);
+        dim3(dimGrid), dim3(dimBlock), 0, 0, start[0], stop[0], 0, -2.0f, cd);
     }
     roctxRangeStop(roctx_id);
     roctxMark("ROCTX-MARK: after hipLaunchKernel");
@@ -456,7 +458,7 @@ void runbench_cpu_gpu_cont(double* cd, double* c, long size) {
 
     auto kernel_time_mad_dp_cpu = benchmark_omp([&] {
       return measure_operation([&] {
-        bench<double, compute_iterations_cpu>(cs.element_count<double>(), 1., -1., c);
+        bench<double, compute_iterations_cpu>(cs.element_count<double>(), 1., -2., c);
       });
     });
     roctxRangePop();  // for "cpuKernel"
@@ -494,7 +496,7 @@ void runbench_cpu_gpu_cont(double* cd, double* c, long size) {
     hipExtLaunchKernelGGL(
         HIP_KERNEL_NAME(benchmark_func<double, BLOCK_SIZE, ELEMENTS_PER_THREAD,
                                        compute_iterations_gpu>),
-        dim3(dimGrid), dim3(dimBlock), 0, 0, start[0], stop[0], 0, 1.0f, cd);
+        dim3(dimGrid), dim3(dimBlock), 0, 0, start[0], stop[0], 0, -2.0f, cd);
     }
     roctxRangeStop(roctx_id);
     roctxMark("ROCTX-MARK: after hipLaunchKernel");
@@ -504,7 +506,7 @@ void runbench_cpu_gpu_cont(double* cd, double* c, long size) {
 
     auto kernel_time_mad_dp_cpu = benchmark_omp([&] {
       return measure_operation([&] {
-        bench<double, compute_iterations_cpu>(cs.element_count<double>(), 1., -1., c);
+        bench<double, compute_iterations_cpu>(cs.element_count<double>(), 1., -2., c);
       });
     });
     roctxRangePop();  // for "cpuKernel"
@@ -558,6 +560,7 @@ template <unsigned int compute_iterations_gpu>
 void runbench_range_cg(double* cd, double* c, long size, unsigned int compute_iterations_cpu) {
   
   runbench_cpu_gpu_cont<CPU_COMPUTE_ITERS_CONTENTION,compute_iterations_gpu>(cd, c, size);
+  //runbench_cpu_gpu_cont<compute_iterations_gpu,CPU_COMPUTE_ITERS_CONTENTION>(cd, c, size);
 }
 
 template <unsigned int j1, unsigned int j2, unsigned int... Args>
@@ -566,12 +569,25 @@ void runbench_range_cg(double* cd, double* c, long size, unsigned int compute_it
   runbench_range_cg<j2, Args...>(cd, c, size, compute_iterations_cpu);
 }
 
+template <unsigned int compute_iterations_cpu>
+void runbench_range_gc(double* cd, double* c, long size, unsigned int compute_iterations_gpu) {
+
+  runbench_cpu_gpu_cont<compute_iterations_cpu,GPU_COMPUTE_ITERS_CONTENTION>(cd, c, size);
+}
+
+template <unsigned int j1, unsigned int j2, unsigned int... Args>
+void runbench_range_gc(double* cd, double* c, long size, unsigned int compute_iterations_gpu) {
+  runbench_range_gc<j1>(cd, c, size, compute_iterations_gpu);
+  runbench_range_gc<j2, Args...>(cd, c, size, compute_iterations_gpu);
+}
+
 
 void mixbenchCPU(double* c, size_t size, int* mod_opt) {
 // Initialize data to zeros on memory by respecting 1st touch policy
-#pragma omp parallel for schedule(static)
+//#pragma omp parallel for schedule(static)
   for (size_t i = 0; i < size; i++)
-    c[i] = 0.0;
+    c[i] = 1.0 + ( (double)(rand()) / (double)(RAND_MAX) );
+    //c[i] = 0.0;
 
   std::cout << "--------------------------------------------"
                "-------------- CSV data "
@@ -596,15 +612,19 @@ void mixbenchCPU(double* c, size_t size, int* mod_opt) {
   HIP_SAFE_CALL(hipDeviceSynchronize());
 
   // Copy results to device memory
-  //HIP_SAFE_CALL(hipMemcpy(cd, c, size * sizeof(double), hipMemcpyHostToDevice));
+  HIP_SAFE_CALL(hipMemcpy(cd, c, size * sizeof(double), hipMemcpyHostToDevice));
   HIP_SAFE_CALL(hipDeviceSynchronize());
+
+  for (size_t i = 0; i < size; i++)
+    c[i] = 0.1*(-1.0 + ( 2.0*(double)(rand()) / (double)(RAND_MAX) ));  
+    //c[i] = 0.0;
 
   runbench_warmup(cd, size);
 
   if (mod_opt[0]){
     runbench_range_cpu<0, 1, 2, 3, 4, 6, 8, 12, 16, 20, 24, 28, 32, 40, 6 * 8, 7 * 8,
                   8 * 8, 10 * 8, 13 * 8, 15 * 8, 16 * 8, 20 * 8, 24 * 8, 32 * 8,
-                   40 * 8, 64 * 8>(c, size);
+                  40 * 8, 64 * 8>(c, size);
   }else if (mod_opt[1]){
     runbench_range_gpu<0, 1, 2, 3, 4, 6, 8, 12, 16, 20, 24, 28, 32, 40, 6 * 8, 7 * 8,
                   8 * 8, 10 * 8, 13 * 8, 15 * 8, 16 * 8, 20 * 8, 24 * 8, 32 * 8,
@@ -614,10 +634,16 @@ void mixbenchCPU(double* c, size_t size, int* mod_opt) {
     runbench_range_cg<0, 1, 2, 3, 4, 6, 8, 12, 16, 20, 24, 28, 32, 40, 6 * 8, 7 * 8,
                   8 * 8, 10 * 8, 13 * 8, 15 * 8, 16 * 8, 20 * 8, 24 * 8, 32 * 8,
                    40 * 8, 64 * 8>(cd, c, size, cpu_f);
+  }else if (mod_opt[3]){
+    unsigned int gpu_f = 32 * 8;
+    runbench_range_gc<0, 1, 2, 3, 4, 6, 8, 12, 16, 20, 24, 28, 32, 40, 6 * 8, 7 * 8,
+                  8 * 8, 10 * 8, 13 * 8, 15 * 8, 16 * 8, 20 * 8, 24 * 8, 32 * 8,
+                   40 * 8, 64 * 8>(cd, c, size, gpu_f);
   }
 	
 
   std::cout << "---------------------------------------------------------------"
                "---------------------------------------------------------------"
             << std::endl;
+
 }

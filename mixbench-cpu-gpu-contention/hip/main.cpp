@@ -22,6 +22,7 @@ struct ArgParams {
 	unsigned int cpu_only=0; 
 	unsigned int gpu_only=0; 
 	unsigned int cpu_gpu=0; 
+	unsigned int gpu_cpu=0; 
 };
 
 // Argument parsing
@@ -38,6 +39,8 @@ bool argument_parsing(int argc, char* argv[], ArgParams* output) {
       output->gpu_only = 1;
     } else if ((strcmp(argv[i], "-cg") == 0)) {
       output->cpu_gpu = 1;   
+    } else if ((strcmp(argv[i], "-gc") == 0)) {
+      output->gpu_cpu = 1;   
     } else {
       unsigned long value = strtoul(argv[i], NULL, 10);
       switch (arg_count) {
@@ -70,14 +73,15 @@ int main(int argc, char* argv[]) {
               << "  -h or --help              Show this message" << std::endl
               << "  -c                        CPU Empirical Roofline Only" << std::endl
               << "  -g                        GPU Empirical Roofline Only" << std::endl
-              << "  -cg                       CPU and GPU contention Empirical Roofline " << std::endl;
+              << "  -cg                       GPU Empirical Roofline w CPU contending for HBM" << std::endl
+              << "  -gc                       CPU Empirical Roofline w GPU contending for HBM" << std::endl;
 
     exit(1);
   }
 
   std::cout << "Use \"-h\" argument to see available options" << std::endl;
 
-  if(args.cpu_only==0 && args.gpu_only==0 && args.cpu_gpu==0){
+  if(args.cpu_only==0 && args.gpu_only==0 && args.cpu_gpu==0 && args.gpu_cpu==0){
     std::cout <<"Select a mode. Type -h for help." << std::endl;
     exit(1);
   }
@@ -90,6 +94,7 @@ int main(int argc, char* argv[]) {
   mod_opt[0] = args.cpu_only;
   mod_opt[1] = args.gpu_only;
   mod_opt[2] = args.cpu_gpu;
+  mod_opt[3] = args.gpu_cpu;
 
   c.reset(new (std::align_val_t(64)) double[VEC_WIDTH]);
 
