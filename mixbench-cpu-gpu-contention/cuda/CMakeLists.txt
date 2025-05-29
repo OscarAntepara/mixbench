@@ -30,7 +30,8 @@ endif()
 
 if (NOT CMAKE_CXX_FLAGS)
     message (STATUS "CMAKE_CXX_FLAGS not set. Using -march=native")
-    set (CMAKE_CXX_FLAGS "-march=native -fopenmp")
+    #set (CMAKE_CXX_FLAGS "-march=native -fopenmp")
+    set (CMAKE_CXX_FLAGS "-march=native -Xcompiler -fopenmp")
 endif()
 
 # Get version info from git tag
@@ -51,6 +52,7 @@ set(CMAKE_BUILD_TYPE Release)
 string(APPEND CMAKE_CUDA_FLAGS " -Xptxas=-v")
 string(APPEND CMAKE_CUDA_FLAGS " -Wno-deprecated-gpu-targets")
 string(APPEND CMAKE_CUDA_FLAGS " --cudart=static")
+string(APPEND CMAKE_CUDA_FLAGS " -Xcompiler -fopenmp")
 string(APPEND CMAKE_CUDA_FLAGS " -gencode arch=compute_80,code=[sm_80,compute_80] -gencode arch=compute_80,code=compute_80")
 
 

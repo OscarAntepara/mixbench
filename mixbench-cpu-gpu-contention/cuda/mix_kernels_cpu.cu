@@ -35,7 +35,9 @@ typedef __half2 half2;
 
 
 #define ELEMENTS_PER_THREAD (8)
-#define CPU_COMPUTE_ITERS_CONTENTION (80)
+#define FUSION_DEGREE (4)
+#define CPU_COMPUTE_ITERS_CONTENTION (2)
+//#define CPU_COMPUTE_ITERS_CONTENTION (80)
 #define GPU_COMPUTE_ITERS_CONTENTION (320)
 
 
@@ -262,33 +264,23 @@ __attribute__((optimize("unroll-loops"))) size_t bench(size_t len,
   return len;
 }
 
-/*
+
 void runbench_warmup(double* cd, long size) {
-  const long compute_grid_size = size / ELEMENTS_PER_THREAD;
-  const int BLOCK_SIZE = 256;
-  const int TOTAL_BLOCKS = compute_grid_size / BLOCK_SIZE;
-  const long long computations =
-      ELEMENTS_PER_THREAD * (long long)compute_grid_size +
-      (2 * ELEMENTS_PER_THREAD * 2) *
-          (long long)compute_grid_size;
-  const long long memoryoperations = size;
+        const long compute_grid_size = size/ELEMENTS_PER_THREAD/FUSION_DEGREE;
+        const int BLOCK_SIZE = 256;
+        const int TOTAL_BLOCKS = compute_grid_size/BLOCK_SIZE;
+        const long long computations = (ELEMENTS_PER_THREAD*(long long)compute_grid_size+(2*ELEMENTS_PER_THREAD*2)*(long long)compute_grid_size)*FUSION_DEGREE;
+        const long long memoryoperations = size;
 
-  dim3 dimBlock(BLOCK_SIZE, 1, 1);
-  dim3 dimGrid(TOTAL_BLOCKS, 1, 1);
-  hipEvent_t start[2], stop[2];
+        dim3 dimBlock(BLOCK_SIZE, 1, 1);
+        dim3 dimGrid(TOTAL_BLOCKS, 1, 1);
+        cudaEvent_t start, stop;
 
-  constexpr auto total_bench_iterations = 6;
-  auto kernel_time_mad_dp_gpu = benchmark<total_bench_iterations>([&]() {
-    initializeEvents_ext(&start[0], &stop[0]);
-
-    hipExtLaunchKernelGGL(
-        HIP_KERNEL_NAME(benchmark_func<double, BLOCK_SIZE, ELEMENTS_PER_THREAD,
-                                       2>),
-        dim3(dimGrid), dim3(dimBlock), 0, 0, start[0], stop[0], 0, 1.0f, cd);
-    return finalizeEvents_ext(start[0], stop[0]);
-  });
+          initializeEvents(&start, &stop);
+          benchmark_func< double, BLOCK_SIZE, ELEMENTS_PER_THREAD, FUSION_DEGREE, 2, false ><<< dimGrid, dimBlock >>>(-2.0, cd);
+          float kernel_time_mad_dp = finalizeEvents(start, stop);
 }
-*/
+
 
 class ComputeSpace {
   size_t memory_space_{0};
@@ -325,7 +317,7 @@ void runbench(double* c, size_t size) {
   // floating point part (double prec)
   auto kernel_time_mad_dp = benchmark_omp([&] {
     return measure_operation([&] {
-      bench<double, compute_iterations>(cs.element_count<double>(), 1., -2., c);
+      bench<double, compute_iterations>(cs.element_count<double>(), 1., -1., c);
     });
   });
   const auto computations_dp = cs.compute_ops<double>();
@@ -344,134 +336,98 @@ void runbench(double* c, size_t size) {
          );
 
 }
-/*
+
 template <unsigned int compute_iterations_cpu, unsigned int compute_iterations_gpu>
 void runbench_iters_gpu(double* cd, double* c, long size, int& num_iters) {
-  const long compute_grid_size = size / ELEMENTS_PER_THREAD;
-  const int BLOCK_SIZE = 256;
-  const int TOTAL_BLOCKS = compute_grid_size / BLOCK_SIZE;
-  const long long computations =
-      ELEMENTS_PER_THREAD * (long long)compute_grid_size +
-      (2 * ELEMENTS_PER_THREAD * compute_iterations_gpu) *
-          (long long)compute_grid_size;
-  const long long memoryoperations = size;
+        const long compute_grid_size = size/ELEMENTS_PER_THREAD/FUSION_DEGREE;
+        const int BLOCK_SIZE = 256;
+        const int TOTAL_BLOCKS = compute_grid_size/BLOCK_SIZE;
+        const long long computations = (ELEMENTS_PER_THREAD*(long long)compute_grid_size+(2*ELEMENTS_PER_THREAD*compute_iterations_gpu)*(long long)compute_grid_size)*FUSION_DEGREE;
+        const long long memoryoperations = size;
 
-  dim3 dimBlock(BLOCK_SIZE, 1, 1);
-  dim3 dimGrid(TOTAL_BLOCKS, 1, 1);
-  hipEvent_t start[2], stop[2];
-
+        dim3 dimBlock(BLOCK_SIZE, 1, 1);
+        dim3 dimGrid(TOTAL_BLOCKS, 1, 1);
+        cudaEvent_t start, stop;
+	
   ComputeSpace cs{size * sizeof(double), compute_iterations_cpu};
 
-  constexpr auto total_bench_iterations = 2;
-
-  float kernel_time_mad_dp_gpu = benchmark<total_bench_iterations>([&]() {
-    initializeEvents_ext(&start[0], &stop[0]);
-
+          initializeEvents(&start, &stop);
     for(int i=0; i<10; i++){
-    hipExtLaunchKernelGGL(
-        HIP_KERNEL_NAME(benchmark_func<double, BLOCK_SIZE, ELEMENTS_PER_THREAD, compute_iterations_gpu>),
-        dim3(dimGrid), dim3(dimBlock), 0, 0, start[0], stop[0], 0, -2.0f, cd);
+          benchmark_func< double, BLOCK_SIZE, ELEMENTS_PER_THREAD, FUSION_DEGREE, compute_iterations_gpu, false ><<< dimGrid, dimBlock, 0, 0 >>>(-2.0, cd);
     }
+          //float kernel_time_mad_dp = finalizeEvents(start, stop);
+
+
     auto kernel_time_mad_dp = benchmark_max_omp([&] {
       return measure_operation([&] {
         bench<double, compute_iterations_cpu>(cs.element_count<double>(), 1., -2., c);
       });
     });
-    return 11*kernel_time_mad_dp/finalizeEvents_ext(start[0], stop[0]);
-  });
+    cudaDeviceSynchronize();
+          float kernel_time_mad_dp_gpu = finalizeEvents(start, stop);
   num_iters=kernel_time_mad_dp_gpu;
 }
 
 
 template <unsigned int compute_iterations_gpu>
 void runbench_gpu(double* cd, long size) {
-  const long compute_grid_size = size / ELEMENTS_PER_THREAD;
-  const int BLOCK_SIZE = 256;
-  const int TOTAL_BLOCKS = compute_grid_size / BLOCK_SIZE;
-  const long long computations =
-      ELEMENTS_PER_THREAD * (long long)compute_grid_size +
-      (2 * ELEMENTS_PER_THREAD * compute_iterations_gpu) *
-          (long long)compute_grid_size;
-  const long long memoryoperations = size;
 
-  dim3 dimBlock(BLOCK_SIZE, 1, 1);
-  dim3 dimGrid(TOTAL_BLOCKS, 1, 1);
-  hipEvent_t start[2], stop[2];
+        const long compute_grid_size = size/ELEMENTS_PER_THREAD/FUSION_DEGREE;
+        const int BLOCK_SIZE = 256;
+        const int TOTAL_BLOCKS = compute_grid_size/BLOCK_SIZE;
+        const long long computations = (ELEMENTS_PER_THREAD*(long long)compute_grid_size+(2*ELEMENTS_PER_THREAD*compute_iterations_gpu)*(long long)compute_grid_size)*FUSION_DEGREE;
+        const long long memoryoperations = size;
 
-  constexpr auto total_bench_iterations = 6;
-  auto kernel_time_mad_dp_gpu = benchmark<total_bench_iterations>([&]() {
-    initializeEvents_ext(&start[0], &stop[0]);
-    
-    hipExtLaunchKernelGGL(
-        HIP_KERNEL_NAME(benchmark_func<double, BLOCK_SIZE, ELEMENTS_PER_THREAD,
-                                       compute_iterations_gpu>),
-        dim3(dimGrid), dim3(dimBlock), 0, 0, start[0], stop[0], 0, -2.0f, cd);
-    return finalizeEvents_ext(start[0], stop[0]);
-  });
+        dim3 dimBlock(BLOCK_SIZE, 1, 1);
+        dim3 dimGrid(TOTAL_BLOCKS, 1, 1);
+        cudaEvent_t start, stop;
+	
+          initializeEvents(&start, &stop);
+          benchmark_func< double, BLOCK_SIZE, ELEMENTS_PER_THREAD, FUSION_DEGREE, compute_iterations_gpu, false ><<< dimGrid, dimBlock >>>(-2.0, cd);
+          float kernel_time_mad_dp = finalizeEvents(start, stop);
 
   printf(
       "GPU,     %4d,   %8.3f, %8.2f, %8.2f, %7.2f\n",
       compute_iterations_gpu,
         // DP
        ((double)computations) / ((double)memoryoperations * sizeof(double)),
-       kernel_time_mad_dp_gpu,
-       ((double)computations) / kernel_time_mad_dp_gpu * 1000. /
+       kernel_time_mad_dp,
+       ((double)computations) / kernel_time_mad_dp * 1000. /
            (double)(1000 * 1000 * 1000),
-       ((double)memoryoperations * sizeof(double)) / kernel_time_mad_dp_gpu * 1000. /
+       ((double)memoryoperations * sizeof(double)) / kernel_time_mad_dp * 1000. /
           (1000. * 1000. * 1000.)
          );
 }
 
 template <unsigned int compute_iterations_cpu, unsigned int compute_iterations_gpu>
 void runbench_cpu_gpu_cont(double* cd, double* c, long size) {
-  const long compute_grid_size = size / ELEMENTS_PER_THREAD;
-  const int BLOCK_SIZE = 256;
-  const int TOTAL_BLOCKS = compute_grid_size / BLOCK_SIZE;
-  const long long computations =
-      ELEMENTS_PER_THREAD * (long long)compute_grid_size +
-      (2 * ELEMENTS_PER_THREAD * compute_iterations_gpu) *
-          (long long)compute_grid_size;
-  const long long memoryoperations = size;
+        const long compute_grid_size = size/ELEMENTS_PER_THREAD/FUSION_DEGREE;
+        const int BLOCK_SIZE = 256;
+        const int TOTAL_BLOCKS = compute_grid_size/BLOCK_SIZE;
+        const long long computations = (ELEMENTS_PER_THREAD*(long long)compute_grid_size+(2*ELEMENTS_PER_THREAD*compute_iterations_gpu)*(long long)compute_grid_size)*FUSION_DEGREE;
+        const long long memoryoperations = size;
 
-  dim3 dimBlock(BLOCK_SIZE, 1, 1);
-  dim3 dimGrid(TOTAL_BLOCKS, 1, 1);
-  hipEvent_t start[2], stop[2];
+        dim3 dimBlock(BLOCK_SIZE, 1, 1);
+        dim3 dimGrid(TOTAL_BLOCKS, 1, 1);
+        cudaEvent_t start, stop;
 
   int num_iters=1;
   runbench_iters_gpu<compute_iterations_cpu,compute_iterations_gpu>(cd, c, size, num_iters);
   ComputeSpace cs{size * sizeof(double), compute_iterations_cpu};
-  int n_b_iter=1;
 
-  constexpr auto total_bench_iterations = 2;
-  auto kernel_time_mad_dp_gpu_dummy = benchmark<total_bench_iterations>([&]() {
-    initializeEvents_ext(&start[0], &stop[0]);
     
-    roctxMark("ROCTX-MARK: before hipLaunchKernel");
-    roctxRangePush("ROCTX-RANGE: hipLaunchKernel");
-
-    roctx_range_id_t roctx_id = roctxRangeStartA("roctx_range with id");
-    
+          initializeEvents(&start, &stop);
     for(int i=0; i<2*num_iters; i++){
-    hipExtLaunchKernelGGL(
-        HIP_KERNEL_NAME(benchmark_func<double, BLOCK_SIZE, ELEMENTS_PER_THREAD,
-                                       compute_iterations_gpu>),
-        dim3(dimGrid), dim3(dimBlock), 0, 0, start[0], stop[0], 0, -2.0f, cd);
+          benchmark_func< double, BLOCK_SIZE, ELEMENTS_PER_THREAD, FUSION_DEGREE, compute_iterations_gpu, false ><<< dimGrid, dimBlock, 0, 0 >>>(-2.0, cd);
     }
-    roctxRangeStop(roctx_id);
-    roctxMark("ROCTX-MARK: after hipLaunchKernel");
-    //hipStreamSynchronize(0); 
+    //cudaStreamSynchronize(0); 
     // CPU kernel
-    roctxRangePush("ROCTX-RANGE: cpuKernel");
-
     auto kernel_time_mad_dp_cpu = benchmark_omp([&] {
       return measure_operation([&] {
         bench<double, compute_iterations_cpu>(cs.element_count<double>(), 1., -2., c);
       });
     });
-    roctxRangePop();  // for "cpuKernel"
-    roctxRangePop();  // for "hipLaunchKernel"
    
-    if (n_b_iter==total_bench_iterations){
     const auto computations_dp = cs.compute_ops<double>();
     const auto memory_traffic = cs.memory_traffic();
       printf(
@@ -485,42 +441,23 @@ void runbench_cpu_gpu_cont(double* cd, double* c, long size) {
        static_cast<double>(memory_traffic) / kernel_time_mad_dp_cpu * 1000. /
           (1000. * 1000. * 1000.)
          );
-    }
-    n_b_iter++; 
-    return finalizeEvents_ext(start[0], stop[0]);
-    //return 0;
-  });
+          float kernel_time_mad_dp_gpu = finalizeEvents(start, stop);
 
-  auto kernel_time_mad_dp_gpu = benchmark<total_bench_iterations>([&]() {
-    initializeEvents_ext(&start[0], &stop[0]);
-    
-    roctxMark("ROCTX-MARK: before hipLaunchKernel");
-    roctxRangePush("ROCTX-RANGE: hipLaunchKernel");
-
-    roctx_range_id_t roctx_id = roctxRangeStartA("roctx_range with id");
+          initializeEvents(&start, &stop);
     
     for(int i=0; i<num_iters/2; i++){
-    hipExtLaunchKernelGGL(
-        HIP_KERNEL_NAME(benchmark_func<double, BLOCK_SIZE, ELEMENTS_PER_THREAD,
-                                       compute_iterations_gpu>),
-        dim3(dimGrid), dim3(dimBlock), 0, 0, start[0], stop[0], 0, -2.0f, cd);
+          benchmark_func< double, BLOCK_SIZE, ELEMENTS_PER_THREAD, FUSION_DEGREE, compute_iterations_gpu, false ><<< dimGrid, dimBlock, 0, 0 >>>(-2.0, cd);
     }
-    roctxRangeStop(roctx_id);
-    roctxMark("ROCTX-MARK: after hipLaunchKernel");
-    //hipStreamSynchronize(0); 
+    //cudaStreamSynchronize(0); 
     // CPU kernel
-    roctxRangePush("ROCTX-RANGE: cpuKernel");
 
-    auto kernel_time_mad_dp_cpu = benchmark_omp([&] {
+    kernel_time_mad_dp_cpu = benchmark_omp([&] {
       return measure_operation([&] {
         bench<double, compute_iterations_cpu>(cs.element_count<double>(), 1., -2., c);
       });
     });
-    roctxRangePop();  // for "cpuKernel"
-    roctxRangePop();  // for "hipLaunchKernel"
    
-    return finalizeEvents_ext(start[0], stop[0]);
-  });
+           kernel_time_mad_dp_gpu = finalizeEvents(start, stop)/(num_iters/2);
 
 
   printf(
@@ -536,7 +473,7 @@ void runbench_cpu_gpu_cont(double* cd, double* c, long size) {
          );
   
 }
-*/
+
 
 
 // Variadic template helper to ease multiple configuration invocations
@@ -554,7 +491,7 @@ void runbench_range_cpu(double* cd, long size) {
 // Variadic template helper to ease multiple configuration invocations
 template <unsigned int compute_iterations>
 void runbench_range_gpu(double* cd, long size) {
-  //runbench_gpu<compute_iterations>(cd, size);
+  runbench_gpu<compute_iterations>(cd, size);
 }
 
 template <unsigned int j1, unsigned int j2, unsigned int... Args>
@@ -566,7 +503,7 @@ void runbench_range_gpu(double* cd, long size) {
 template <unsigned int compute_iterations_gpu>
 void runbench_range_cg(double* cd, double* c, long size, unsigned int compute_iterations_cpu) {
   
-  //runbench_cpu_gpu_cont<CPU_COMPUTE_ITERS_CONTENTION,compute_iterations_gpu>(cd, c, size);
+  runbench_cpu_gpu_cont<CPU_COMPUTE_ITERS_CONTENTION,compute_iterations_gpu>(cd, c, size);
 }
 
 template <unsigned int j1, unsigned int j2, unsigned int... Args>
@@ -625,7 +562,7 @@ void mixbenchCPU(double* c, size_t size, int* mod_opt) {
     //c[i] = 0.1*(-1.0 + ( 2.0*(double)(rand()) / (double)(RAND_MAX) ));  
     c[i] = 0.0;
 
-  //runbench_warmup(cd, size);
+  runbench_warmup(cd, size);
 
   if (mod_opt[0]){
     runbench_range_cpu<0, 1, 2, 3, 4, 6, 8, 12, 16, 20, 24, 28, 32, 40, 6 * 8, 7 * 8,
