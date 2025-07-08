@@ -13,6 +13,8 @@
 #include <iostream>
 #include <memory>
 #include <vector>
+//#include <nvToolsExt.h>
+#include <nvtx3/nvToolsExt.h>
 
 //#include <hip/hip_ext.h>
 //#include <hip/hip_fp16.h>
@@ -36,9 +38,10 @@ typedef __half2 half2;
 
 #define ELEMENTS_PER_THREAD (8)
 #define FUSION_DEGREE (4)
-#define CPU_COMPUTE_ITERS_CONTENTION (2)
+#define CPU_COMPUTE_ITERS_CONTENTION (1)
 //#define CPU_COMPUTE_ITERS_CONTENTION (80)
-#define GPU_COMPUTE_ITERS_CONTENTION (320)
+//#define GPU_COMPUTE_ITERS_CONTENTION (320)
+#define GPU_COMPUTE_ITERS_CONTENTION (1)
 
 
 const auto base_omp_get_max_threads = omp_get_max_threads();
@@ -229,6 +232,13 @@ __global__ void benchmark_func(T seed, T *g_data){
 	}
 }
 
+template <class T, int blockdim, unsigned int granularity>
+__global__ void init_func(T *g_data){
+	const unsigned int blockSize = blockdim;
+	int idx = blockIdx.x*blockSize*granularity + threadIdx.x;
+	g_data[idx]=1.0;
+}
+
 void initializeEvents(cudaEvent_t *start, cudaEvent_t *stop){
 	CUDA_SAFE_CALL( cudaEventCreate(start) );
 	CUDA_SAFE_CALL( cudaEventCreate(stop) );
@@ -277,10 +287,11 @@ void runbench_warmup(double* cd, long size) {
         cudaEvent_t start, stop;
 
           initializeEvents(&start, &stop);
+	  for (int i; i<1; i++){
           benchmark_func< double, BLOCK_SIZE, ELEMENTS_PER_THREAD, FUSION_DEGREE, 2, false ><<< dimGrid, dimBlock >>>(-2.0, cd);
+	  }
           float kernel_time_mad_dp = finalizeEvents(start, stop);
 }
-
 
 class ComputeSpace {
   size_t memory_space_{0};
@@ -381,7 +392,6 @@ void runbench_gpu(double* cd, long size) {
         dim3 dimBlock(BLOCK_SIZE, 1, 1);
         dim3 dimGrid(TOTAL_BLOCKS, 1, 1);
         cudaEvent_t start, stop;
-	
           initializeEvents(&start, &stop);
           benchmark_func< double, BLOCK_SIZE, ELEMENTS_PER_THREAD, FUSION_DEGREE, compute_iterations_gpu, false ><<< dimGrid, dimBlock >>>(-2.0, cd);
           float kernel_time_mad_dp = finalizeEvents(start, stop);
@@ -422,16 +432,18 @@ void runbench_cpu_gpu_cont(double* cd, double* c, long size) {
     }
     //cudaStreamSynchronize(0); 
     // CPU kernel
+    nvtxRangePush("CPU kernel - 1st phase");
     auto kernel_time_mad_dp_cpu = benchmark_omp([&] {
       return measure_operation([&] {
         bench<double, compute_iterations_cpu>(cs.element_count<double>(), 1., -2., c);
       });
     });
-   
+    nvtxRangePop();
+
     const auto computations_dp = cs.compute_ops<double>();
     const auto memory_traffic = cs.memory_traffic();
       printf(
-      "CPU,     %4d,   %8.3f, %8.2f, %8.2f, %7.2f\n",
+      "CPU,     %4d,          %8.3f,   %8.2f,   %8.2f, %7.2f\n",
       compute_iterations_cpu,
         // DP
        static_cast<double>(computations_dp) / static_cast<double>(memory_traffic),
@@ -443,25 +455,29 @@ void runbench_cpu_gpu_cont(double* cd, double* c, long size) {
          );
           float kernel_time_mad_dp_gpu = finalizeEvents(start, stop);
 
+
           initializeEvents(&start, &stop);
-    
+    int num_rep=0;    
     for(int i=0; i<num_iters/2; i++){
+    //for(int i=0; i<5; i++){
+          //initializeEvents(&start, &stop);
           benchmark_func< double, BLOCK_SIZE, ELEMENTS_PER_THREAD, FUSION_DEGREE, compute_iterations_gpu, false ><<< dimGrid, dimBlock, 0, 0 >>>(-2.0, cd);
+           //kernel_time_mad_dp_gpu = finalizeEvents(start, stop);
+	  num_rep++;
     }
+           kernel_time_mad_dp_gpu = finalizeEvents(start, stop)/(num_rep);
     //cudaStreamSynchronize(0); 
     // CPU kernel
-
+    nvtxRangePush("CPU kernel - 2nd phase");
     kernel_time_mad_dp_cpu = benchmark_omp([&] {
       return measure_operation([&] {
         bench<double, compute_iterations_cpu>(cs.element_count<double>(), 1., -2., c);
       });
     });
+    nvtxRangePop();
    
-           kernel_time_mad_dp_gpu = finalizeEvents(start, stop)/(num_iters/2);
-
-
   printf(
-      "GPU,     %4d,   %8.3f, %8.2f, %8.2f, %7.2f\n",
+      "GPU,     %4d,          %8.3f,   %8.2f,   %8.2f, %7.2f\n",
       compute_iterations_gpu,
         // DP
        ((double)computations) / ((double)memoryoperations * sizeof(double)),
@@ -515,7 +531,7 @@ void runbench_range_cg(double* cd, double* c, long size, unsigned int compute_it
 template <unsigned int compute_iterations_cpu>
 void runbench_range_gc(double* cd, double* c, long size, unsigned int compute_iterations_gpu) {
 
-  //runbench_cpu_gpu_cont<compute_iterations_cpu,GPU_COMPUTE_ITERS_CONTENTION>(cd, c, size);
+  runbench_cpu_gpu_cont<compute_iterations_cpu,GPU_COMPUTE_ITERS_CONTENTION>(cd, c, size);
 }
 
 template <unsigned int j1, unsigned int j2, unsigned int... Args>
@@ -530,6 +546,7 @@ void mixbenchCPU(double* c, size_t size, int* mod_opt) {
 //#pragma omp parallel for schedule(static)
   for (size_t i = 0; i < size; i++)
     //c[i] = 1.0 + ( (double)(rand()) / (double)(RAND_MAX) );
+    //c[i] = 0.1*(-1.0 + ( 2.0*(double)(rand()) / (double)(RAND_MAX) ));  
     c[i] = 0.0;
 
   std::cout << "--------------------------------------------"
@@ -544,31 +561,43 @@ void mixbenchCPU(double* c, size_t size, int* mod_opt) {
 
 
   double* cd;
+  double* cd_c;
 
-  CUDA_SAFE_CALL(cudaMalloc((void**)&cd, size * sizeof(double)));
+  //CUDA_SAFE_CALL(cudaMalloc((void**)&cd, size * sizeof(double)));
+  CUDA_SAFE_CALL(cudaMallocHost((void**)&cd_c, size * sizeof(double)));
+  CUDA_SAFE_CALL(cudaMallocHost((void**)&cd, size * sizeof(double)));
+  //CUDA_SAFE_CALL(cudaMallocManaged((void**)&cd, size * sizeof(double)));
+  //CUDA_SAFE_CALL(cudaMallocManaged((void**)&cd_c, size * sizeof(double)));
 
   // Copy data to device memory
-  CUDA_SAFE_CALL(
-      cudaMemset(cd, 0, size * sizeof(double)));  // initialize to zeros
+  //CUDA_SAFE_CALL(
+  //    cudaMemset(cd, 0, size * sizeof(double)));  // initialize to zeros
+  //CUDA_SAFE_CALL(
+  //    cudaMemset(cd_c, 0, size * sizeof(double)));  // initialize to zeros
+
 
   // Synchronize in order to wait for memory operations to finish
   CUDA_SAFE_CALL(cudaDeviceSynchronize());
 
   // Copy results to device memory
   //CUDA_SAFE_CALL(cudaMemcpy(cd, c, size * sizeof(double), cudaMemcpyHostToDevice));
-  //CUDA_SAFE_CALL(cudaDeviceSynchronize());
+  //CUDA_SAFE_CALL(cudaMemcpy(cd_c, c, size * sizeof(double), cudaMemcpyHostToDevice));
+  CUDA_SAFE_CALL(cudaDeviceSynchronize());
 
-  for (size_t i = 0; i < size; i++)
-    //c[i] = 0.1*(-1.0 + ( 2.0*(double)(rand()) / (double)(RAND_MAX) ));  
-    c[i] = 0.0;
-
-  runbench_warmup(cd, size);
+  for (size_t i = 0; i < size; i++){
+    //cd[i] = 0.1*(-1.0 + ( 2.0*(double)(rand()) / (double)(RAND_MAX) ));  
+    cd[i] = 0.0;
+    cd_c[i] = 0.0;
+  }
+  //runbench_warmup(cd, size);
+  //runbench_warmup(cd_c, size);
 
   if (mod_opt[0]){
     runbench_range_cpu<0, 1, 2, 3, 4, 6, 8, 12, 16, 20, 24, 28, 32, 40, 6 * 8, 7 * 8,
                   8 * 8, 10 * 8, 13 * 8, 15 * 8, 16 * 8, 20 * 8, 24 * 8, 32 * 8,
-                  40 * 8, 64 * 8>(c, size);
+                  40 * 8, 64 * 8>(cd_c, size);
   }else if (mod_opt[1]){
+  //runbench_warmup(cd, size);
     runbench_range_gpu<0, 1, 2, 3, 4, 6, 8, 12, 16, 20, 24, 28, 32, 40, 6 * 8, 7 * 8,
                   8 * 8, 10 * 8, 13 * 8, 15 * 8, 16 * 8, 20 * 8, 24 * 8, 32 * 8,
                    40 * 8, 64 * 8>(cd, size);
@@ -576,12 +605,14 @@ void mixbenchCPU(double* c, size_t size, int* mod_opt) {
     unsigned int cpu_f = 32 * 8;
     runbench_range_cg<0, 1, 2, 3, 4, 6, 8, 12, 16, 20, 24, 28, 32, 40, 6 * 8, 7 * 8,
                   8 * 8, 10 * 8, 13 * 8, 15 * 8, 16 * 8, 20 * 8, 24 * 8, 32 * 8,
-                   40 * 8, 64 * 8>(cd, c, size, cpu_f);
+                   40 * 8, 64 * 8>(cd, cd_c, size, cpu_f);
+    //runbench_range_cg<2>(cd, c, size, cpu_f);
+    
   }else if (mod_opt[3]){
     unsigned int gpu_f = 32 * 8;
     runbench_range_gc<0, 1, 2, 3, 4, 6, 8, 12, 16, 20, 24, 28, 32, 40, 6 * 8, 7 * 8,
                   8 * 8, 10 * 8, 13 * 8, 15 * 8, 16 * 8, 20 * 8, 24 * 8, 32 * 8,
-                   40 * 8, 64 * 8>(cd, c, size, gpu_f);
+                   40 * 8, 64 * 8>(cd, cd_c, size, gpu_f);
   }
 	
 
