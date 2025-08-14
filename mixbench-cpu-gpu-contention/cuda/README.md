@@ -4,7 +4,7 @@ This is the initial implementaion to execute CPU and GPU task concurrently.
 
 ## Building notes
 
-Load the most recent nvhpd compilers and build following the next line:
+Load the most recent nvhpc compilers and build following the next line:
 nvc++ -Munroll -Mvect -mcpu=neoverse-v2 -fopenmp -v -o exe main.cpp mix_kernels_cpu.cu
 
 Execute with:
