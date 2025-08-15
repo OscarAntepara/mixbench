@@ -32,7 +32,7 @@
 
 typedef __half2 half2;
 
-#include <common.h>
+#include "common.h"
 #include "lcutil.h"
 
 

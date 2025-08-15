@@ -16,7 +16,7 @@
 #include <cuda_runtime.h>
 #include <string.h>
 #include "lcutil.h"
-#include "version_info.h"
+//#include "version_info.h"
 
 #include "mix_kernels_cpu.h"
 
@@ -64,7 +64,7 @@ bool argument_parsing(int argc, char* argv[], ArgParams* output) {
 }
 
 int main(int argc, char* argv[]) {
-  std::cout << "mixbench-cpu (" << VERSION_INFO << ")" << std::endl;
+  std::cout << "mixbench-cpu-gpu-contention" << std::endl;
 
   const auto hardware_concurrency = omp_get_max_threads();
 
