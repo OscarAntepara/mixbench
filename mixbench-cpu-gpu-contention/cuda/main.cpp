@@ -79,8 +79,8 @@ int main(int argc, char* argv[]) {
               << "  -h or --help              Show this message" << std::endl
               << "  -c                        CPU Empirical Roofline Only" << std::endl
               << "  -g                        GPU Empirical Roofline Only" << std::endl
-              << "  -cg                       GPU Empirical Roofline w CPU contending for HBM" << std::endl
-              << "  -gc                       CPU Empirical Roofline w GPU contending for HBM" << std::endl;
+              << "  -cg                       GPU Empirical Roofline w CPU contending" << std::endl
+              << "  -gc                       CPU Empirical Roofline w GPU contending" << std::endl;
 
     exit(1);
   }

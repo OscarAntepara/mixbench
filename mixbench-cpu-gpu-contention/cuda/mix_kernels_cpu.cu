@@ -38,10 +38,10 @@ typedef __half2 half2;
 
 #define ELEMENTS_PER_THREAD (8)
 #define FUSION_DEGREE (4)
-#define CPU_COMPUTE_ITERS_CONTENTION (1)
-//#define CPU_COMPUTE_ITERS_CONTENTION (80)
-//#define GPU_COMPUTE_ITERS_CONTENTION (320)
-#define GPU_COMPUTE_ITERS_CONTENTION (1)
+#define CPU_COMPUTE_ITERS_CONTENTION_MB (1)
+#define CPU_COMPUTE_ITERS_CONTENTION_CB (80)
+#define GPU_COMPUTE_ITERS_CONTENTION_CB (320)
+#define GPU_COMPUTE_ITERS_CONTENTION_MB (1)
 
 
 const auto base_omp_get_max_threads = omp_get_max_threads();
@@ -427,7 +427,7 @@ void runbench_cpu_gpu_cont(double* cd, double* c, long size) {
 
     
           initializeEvents(&start, &stop);
-    for(int i=0; i<2*num_iters; i++){
+    for(int i=0; i<3*num_iters; i++){
           benchmark_func< double, BLOCK_SIZE, ELEMENTS_PER_THREAD, FUSION_DEGREE, compute_iterations_gpu, false ><<< dimGrid, dimBlock, 0, 0 >>>(-2.0, cd);
     }
     //cudaStreamSynchronize(0); 
@@ -459,10 +459,7 @@ void runbench_cpu_gpu_cont(double* cd, double* c, long size) {
           initializeEvents(&start, &stop);
     int num_rep=0;    
     for(int i=0; i<num_iters/2; i++){
-    //for(int i=0; i<5; i++){
-          //initializeEvents(&start, &stop);
           benchmark_func< double, BLOCK_SIZE, ELEMENTS_PER_THREAD, FUSION_DEGREE, compute_iterations_gpu, false ><<< dimGrid, dimBlock, 0, 0 >>>(-2.0, cd);
-           //kernel_time_mad_dp_gpu = finalizeEvents(start, stop);
 	  num_rep++;
     }
            kernel_time_mad_dp_gpu = finalizeEvents(start, stop)/(num_rep);
@@ -517,39 +514,45 @@ void runbench_range_gpu(double* cd, long size) {
 }
 
 template <unsigned int compute_iterations_gpu>
-void runbench_range_cg(double* cd, double* c, long size, unsigned int compute_iterations_cpu) {
-  
-  runbench_cpu_gpu_cont<CPU_COMPUTE_ITERS_CONTENTION,compute_iterations_gpu>(cd, c, size);
+void runbench_range_cg(double* cd, double* c, long size, unsigned int kernel_type_cpu) {
+  if (kernel_type_cpu){
+    runbench_cpu_gpu_cont<CPU_COMPUTE_ITERS_CONTENTION_CB,compute_iterations_gpu>(cd, c, size);
+  }else{
+    runbench_cpu_gpu_cont<CPU_COMPUTE_ITERS_CONTENTION_MB,compute_iterations_gpu>(cd, c, size);
+  }	  
 }
 
 template <unsigned int j1, unsigned int j2, unsigned int... Args>
-void runbench_range_cg(double* cd, double* c, long size, unsigned int compute_iterations_cpu) {
-  runbench_range_cg<j1>(cd, c, size, compute_iterations_cpu);
-  runbench_range_cg<j2, Args...>(cd, c, size, compute_iterations_cpu);
+void runbench_range_cg(double* cd, double* c, long size, unsigned int kernel_type_cpu) {
+  runbench_range_cg<j1>(cd, c, size, kernel_type_cpu);
+  runbench_range_cg<j2, Args...>(cd, c, size, kernel_type_cpu);
 }
 
 template <unsigned int compute_iterations_cpu>
-void runbench_range_gc(double* cd, double* c, long size, unsigned int compute_iterations_gpu) {
-
-  runbench_cpu_gpu_cont<compute_iterations_cpu,GPU_COMPUTE_ITERS_CONTENTION>(cd, c, size);
+void runbench_range_gc(double* cd, double* c, long size, unsigned int kernel_type_gpu) {
+  if (kernel_type_gpu){
+    runbench_cpu_gpu_cont<compute_iterations_cpu,GPU_COMPUTE_ITERS_CONTENTION_CB>(cd, c, size);
+  }else{
+    runbench_cpu_gpu_cont<compute_iterations_cpu,GPU_COMPUTE_ITERS_CONTENTION_MB>(cd, c, size);
+  }
 }
 
 template <unsigned int j1, unsigned int j2, unsigned int... Args>
-void runbench_range_gc(double* cd, double* c, long size, unsigned int compute_iterations_gpu) {
-  runbench_range_gc<j1>(cd, c, size, compute_iterations_gpu);
-  runbench_range_gc<j2, Args...>(cd, c, size, compute_iterations_gpu);
+void runbench_range_gc(double* cd, double* c, long size, unsigned int kernel_type_gpu) {
+  runbench_range_gc<j1>(cd, c, size, kernel_type_gpu);
+  runbench_range_gc<j2, Args...>(cd, c, size, kernel_type_gpu);
 }
 
 
 void mixbenchCPU(double* c, double* c2, size_t size, int* mod_opt) {
 // Initialize data to zeros on memory by respecting 1st touch policy
-#pragma omp parallel for schedule(static)
+//#pragma omp parallel for schedule(static)
   for (size_t i = 0; i < size; i++)
     //c[i] = 1.0 + ( (double)(rand()) / (double)(RAND_MAX) );
-    //c[i] = 0.1*(-1.0 + ( 2.0*(double)(rand()) / (double)(RAND_MAX) ));  
-    c[i] = 0.0;
+    c[i] = 0.1*(-1.0 + ( 2.0*(double)(rand()) / (double)(RAND_MAX) ));  
+    //c[i] = 0.0;
 
-  std::cout << "Test with zero values" << std::endl; 
+  std::cout << "Test with random values" << std::endl; 
   std::cout << "--------------------------------------------"
                "-------------- CSV data "
                "--------------------------------------------"
@@ -557,18 +560,17 @@ void mixbenchCPU(double* c, double* c2, size_t size, int* mod_opt) {
             << std::endl;
   std::cout << "Experiment ID, Double Precision ops,,,,              "
             << std::endl;
+  std::cout << std::endl;
   //std::cout << "CPU or GPU, Compute iters, Flops/byte, ex.time,  GFLOPS, GB/sec, "<< std::endl;
 
 
   double* cd;
   double* cd_mm; 
   double* cd_mh;
-  double* cd_c; 
   double* cd_mm_c; 
   double* cd_mh_c;
 
   CUDA_SAFE_CALL(cudaMalloc((void**)&cd, size * sizeof(double)));
-  CUDA_SAFE_CALL(cudaMalloc((void**)&cd_c, size * sizeof(double)));
   CUDA_SAFE_CALL(cudaMallocHost((void**)&cd_mh, size * sizeof(double)));
   CUDA_SAFE_CALL(cudaMallocHost((void**)&cd_mh_c, size * sizeof(double)));
   CUDA_SAFE_CALL(cudaMallocManaged((void**)&cd_mm, size * sizeof(double)));
@@ -577,8 +579,6 @@ void mixbenchCPU(double* c, double* c2, size_t size, int* mod_opt) {
   // Copy data to device memory
   CUDA_SAFE_CALL(
       cudaMemset(cd, 0, size * sizeof(double)));  // initialize to zeros
-  CUDA_SAFE_CALL(
-      cudaMemset(cd_c, 0, size * sizeof(double)));  // initialize to zeros
   CUDA_SAFE_CALL(
       cudaMemset(cd_mm, 0, size * sizeof(double)));  // initialize to zeros
   CUDA_SAFE_CALL(
@@ -592,8 +592,12 @@ void mixbenchCPU(double* c, double* c2, size_t size, int* mod_opt) {
   CUDA_SAFE_CALL(cudaDeviceSynchronize());
 
   // Copy results to device memory
-  //CUDA_SAFE_CALL(cudaMemcpy(cd, c, size * sizeof(double), cudaMemcpyHostToDevice));
-  //CUDA_SAFE_CALL(cudaMemcpy(cd_c, c, size * sizeof(double), cudaMemcpyHostToDevice));
+  CUDA_SAFE_CALL(cudaMemcpy(cd, c, size * sizeof(double), cudaMemcpyHostToDevice));
+  CUDA_SAFE_CALL(cudaMemcpy(cd_mm, c, size * sizeof(double), cudaMemcpyHostToDevice));
+  for (size_t i = 0; i < size; i++){
+    cd_mm_c[i] = 0.1*(-1.0 + ( 2.0*(double)(rand()) / (double)(RAND_MAX) ));  
+    cd_mh_c[i] = 0.1*(-1.0 + ( 2.0*(double)(rand()) / (double)(RAND_MAX) ));  
+  }
   CUDA_SAFE_CALL(cudaDeviceSynchronize());
 
   if (mod_opt[0]){
@@ -626,9 +630,6 @@ void mixbenchCPU(double* c, double* c2, size_t size, int* mod_opt) {
                   8 * 8, 10 * 8, 13 * 8, 15 * 8, 16 * 8, 20 * 8, 24 * 8, 32 * 8,
                   40 * 8, 64 * 8>(cd_mh_c, size);
   }else if (mod_opt[1]){
-    //runbench_range_gpu<0, 1, 2, 3, 4, 6, 8, 12, 16, 20, 24, 28, 32, 40, 6 * 8, 7 * 8,
-    //              8 * 8, 10 * 8, 13 * 8, 15 * 8, 16 * 8, 20 * 8, 24 * 8, 32 * 8,
-    //               40 * 8, 64 * 8>(cd, size);
     std::cout << "malloc FT CPU" << std::endl;
     std::cout << "CPU or GPU, Compute iters, Flops/byte, ex.time,  GFLOPS, GB/sec, "<< std::endl;
     runbench_range_gpu<0, 1, 2, 3, 4, 6, 8, 12, 16, 20, 24, 28, 32, 40, 6 * 8, 7 * 8,
@@ -657,17 +658,34 @@ void mixbenchCPU(double* c, double* c2, size_t size, int* mod_opt) {
     runbench_range_gpu<0, 1, 2, 3, 4, 6, 8, 12, 16, 20, 24, 28, 32, 40, 6 * 8, 7 * 8,
                   8 * 8, 10 * 8, 13 * 8, 15 * 8, 16 * 8, 20 * 8, 24 * 8, 32 * 8,
                   40 * 8, 64 * 8>(cd_mh, size);    
-  }else if (mod_opt[2]){
-    unsigned int cpu_f = 32 * 8;
+  }else if (mod_opt[2]){ 
+    unsigned int kernel_type_cpu = 1;
+    std::cout << "GPU Roofline contending with a CPU Compute-Bound kernel and just using cudamallocHost" << std::endl;
+    std::cout << "CPU or GPU, Compute iters, Flops/byte, ex.time,  GFLOPS, GB/sec, "<< std::endl;
     runbench_range_cg<0, 1, 2, 3, 4, 6, 8, 12, 16, 20, 24, 28, 32, 40, 6 * 8, 7 * 8,
                   8 * 8, 10 * 8, 13 * 8, 15 * 8, 16 * 8, 20 * 8, 24 * 8, 32 * 8,
-                   40 * 8, 64 * 8>(cd, cd_c, size, cpu_f);
+                   40 * 8, 64 * 8>(cd_mh, cd_mh_c, size, kernel_type_cpu);
+    kernel_type_cpu = 0;
+    std::cout << "GPU Roofline contending with a CPU Memory-Bound kernel and just using cudamallocHost" << std::endl;
+    std::cout << "CPU or GPU, Compute iters, Flops/byte, ex.time,  GFLOPS, GB/sec, "<< std::endl;
+   runbench_range_cg<0, 1, 2, 3, 4, 6, 8, 12, 16, 20, 24, 28, 32, 40, 6 * 8, 7 * 8,
+                  8 * 8, 10 * 8, 13 * 8, 15 * 8, 16 * 8, 20 * 8, 24 * 8, 32 * 8,
+                   40 * 8, 64 * 8>(cd_mh, cd_mh_c, size, kernel_type_cpu);
+
     
   }else if (mod_opt[3]){
-    unsigned int gpu_f = 32 * 8;
+    unsigned int kernel_type_gpu = 1;
+    std::cout << "CPU Roofline contending with a GPU Compute-Bound kernel and just using cudamallocHost" << std::endl;
+    std::cout << "CPU or GPU, Compute iters, Flops/byte, ex.time,  GFLOPS, GB/sec, "<< std::endl;
     runbench_range_gc<0, 1, 2, 3, 4, 6, 8, 12, 16, 20, 24, 28, 32, 40, 6 * 8, 7 * 8,
                   8 * 8, 10 * 8, 13 * 8, 15 * 8, 16 * 8, 20 * 8, 24 * 8, 32 * 8,
-                   40 * 8, 64 * 8>(cd, cd_c, size, gpu_f);
+                   40 * 8, 64 * 8>(cd_mh, cd_mh_c, size, kernel_type_gpu);
+    kernel_type_gpu = 0;
+    std::cout << "CPU Roofline contending with a GPU Memory-Bound kernel and just using cudamallocHost" << std::endl;
+    std::cout << "CPU or GPU, Compute iters, Flops/byte, ex.time,  GFLOPS, GB/sec, "<< std::endl;
+    runbench_range_gc<0, 1, 2, 3, 4, 6, 8, 12, 16, 20, 24, 28, 32, 40, 6 * 8, 7 * 8,
+                  8 * 8, 10 * 8, 13 * 8, 15 * 8, 16 * 8, 20 * 8, 24 * 8, 32 * 8,
+                   40 * 8, 64 * 8>(cd_mh, cd_mh_c, size, kernel_type_gpu);
   }
 	
 
