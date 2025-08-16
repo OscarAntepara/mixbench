@@ -37,6 +37,8 @@ typedef __half2 half2;
 #define GPU_COMPUTE_ITERS_CONTENTION_CB (320)
 #define GPU_COMPUTE_ITERS_CONTENTION_MB (1)
 
+#define USE_RANDOM (1)
+
 const auto base_omp_get_max_threads = omp_get_max_threads();
 
 using benchmark_clock = std::chrono::steady_clock;
@@ -587,12 +589,19 @@ void runbench_range_gc(double* cd, double* c, long size, unsigned int kernel_typ
 void mixbenchCPU(double* c, double* c2, size_t size, int* mod_opt) {
 // Initialize data to zeros on memory by respecting 1st touch policy
 //#pragma omp parallel for schedule(static)
+#if USE_RANDOM
   for (size_t i = 0; i < size; i++)
     //c[i] = 1.0 + ( (double)(rand()) / (double)(RAND_MAX) );
     c[i] = 0.1*(-1.0 + ( 2.0*(double)(rand()) / (double)(RAND_MAX) ));  
     //c[i] = 0.0;
 
   std::cout << "Test with random values" << std::endl; 
+#else
+  for (size_t i = 0; i < size; i++)
+    c[i] = 0.0;
+
+  std::cout << "Test with zero values" << std::endl;
+#endif  
   std::cout << "--------------------------------------------"
                "-------------- CSV data "
                "--------------------------------------------"
@@ -630,6 +639,7 @@ void mixbenchCPU(double* c, double* c2, size_t size, int* mod_opt) {
   // Synchronize in order to wait for memory operations to finish
   HIP_SAFE_CALL(hipDeviceSynchronize());
 
+#if USE_RANDOM
   // Copy results to device memory
   HIP_SAFE_CALL(hipMemcpy(cd, c, size * sizeof(double), hipMemcpyHostToDevice));
   HIP_SAFE_CALL(hipMemcpy(cd_mm, c, size * sizeof(double), hipMemcpyHostToDevice));
@@ -638,6 +648,7 @@ void mixbenchCPU(double* c, double* c2, size_t size, int* mod_opt) {
     cd_mm_c[i] = 0.1*(-1.0 + ( 2.0*(double)(rand()) / (double)(RAND_MAX) ));
     cd_mh_c[i] = 0.1*(-1.0 + ( 2.0*(double)(rand()) / (double)(RAND_MAX) ));
   }
+#endif  
   HIP_SAFE_CALL(hipDeviceSynchronize());
 
 
@@ -650,7 +661,9 @@ void mixbenchCPU(double* c, double* c2, size_t size, int* mod_opt) {
                   40 * 8, 64 * 8>(c, size);
     std::cout << "malloc FT GPU" << std::endl;
     runbench_warmup(c2, size);
+#if USE_RANDOM
     for (size_t i = 0; i < size; i++) {c2[i] =  0.1*(-1.0 + ( 2.0*(double)(rand()) / (double)(RAND_MAX) ));;}
+#endif    
     std::cout << "CPU or GPU, Compute iters, Flops/byte, ex.time,  GFLOPS, GB/sec, "<< std::endl;
     runbench_range_cpu<0, 1, 2, 3, 4, 6, 8, 12, 16, 20, 24, 28, 32, 40, 6 * 8, 7 * 8,
                   8 * 8, 10 * 8, 13 * 8, 15 * 8, 16 * 8, 20 * 8, 24 * 8, 32 * 8,
@@ -684,7 +697,9 @@ void mixbenchCPU(double* c, double* c2, size_t size, int* mod_opt) {
                   40 * 8, 64 * 8>(c, size);
     std::cout << "malloc FT GPU" << std::endl;
     runbench_warmup(c2, size);
+#if USE_RANDOM
     for (size_t i = 0; i < size; i++) {c2[i] =  0.1*(-1.0 + ( 2.0*(double)(rand()) / (double)(RAND_MAX) ));;}
+#endif    
     std::cout << "CPU or GPU, Compute iters, Flops/byte, ex.time,  GFLOPS, GB/sec, "<< std::endl;
     runbench_range_gpu<0, 1, 2, 3, 4, 6, 8, 12, 16, 20, 24, 28, 32, 40, 6 * 8, 7 * 8,
                   8 * 8, 10 * 8, 13 * 8, 15 * 8, 16 * 8, 20 * 8, 24 * 8, 32 * 8,
