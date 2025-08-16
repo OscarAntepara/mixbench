@@ -1,8 +1,4 @@
 /**
- * mix_kernels_cpu.cpp: This file is part of the mixbench GPU micro-benchmark
- *suite.
- *
- * Contact: Elias Konstantinidis <ekondis@gmail.com>
  **/
 
 #include <omp.h>
@@ -641,6 +637,12 @@ void mixbenchCPU(double* c, double* c2, size_t size, int* mod_opt) {
     runbench_range_gpu<0, 1, 2, 3, 4, 6, 8, 12, 16, 20, 24, 28, 32, 40, 6 * 8, 7 * 8,
                   8 * 8, 10 * 8, 13 * 8, 15 * 8, 16 * 8, 20 * 8, 24 * 8, 32 * 8,
                   40 * 8, 64 * 8>(c2, size);
+    std::cout << "cudamalloc" << std::endl;
+    runbench_warmup(cd, size);
+    std::cout << "CPU or GPU, Compute iters, Flops/byte, ex.time,  GFLOPS, GB/sec, "<< std::endl;
+    runbench_range_gpu<0, 1, 2, 3, 4, 6, 8, 12, 16, 20, 24, 28, 32, 40, 6 * 8, 7 * 8,
+                  8 * 8, 10 * 8, 13 * 8, 15 * 8, 16 * 8, 20 * 8, 24 * 8, 32 * 8,
+                  40 * 8, 64 * 8>(cd, size);
     std::cout << "cudamallocmanaged FT CPU" << std::endl;
     for (size_t i = 0; i < size; i++) {cd_mm_c[i] = 0.0;}
     std::cout << "CPU or GPU, Compute iters, Flops/byte, ex.time,  GFLOPS, GB/sec, "<< std::endl;

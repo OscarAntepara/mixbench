@@ -1,7 +1,4 @@
 /**
- * main.cpp: This file is part of the mixbench GPU micro-benchmark suite.
- *
- * Contact: Elias Konstantinidis <ekondis@gmail.com>
  **/
 
 #include <omp.h>

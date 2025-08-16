@@ -1,7 +1,4 @@
 /**
- * lhiputil.h: This file is part of the mixbench GPU micro-benchmark suite.
- *
- * Contact: Elias Konstantinidis <ekondis@gmail.com>
  **/
 
 #ifndef _HIPUTIL_H_

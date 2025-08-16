@@ -1,7 +1,4 @@
 /**
- * main.cpp: This file is part of the mixbench GPU micro-benchmark suite.
- *
- * Contact: Elias Konstantinidis <ekondis@gmail.com>
  **/
 
 #include <omp.h>
@@ -58,7 +55,7 @@ bool argument_parsing(int argc, char* argv[], ArgParams* output) {
 }
 
 int main(int argc, char* argv[]) {
-  std::cout << "mixbench-cpu (" << VERSION_INFO << ")" << std::endl;
+  std::cout << "mixbench-cpu-gpu-contention" << std::endl;
 
   const auto hardware_concurrency = omp_get_max_threads();
 
@@ -89,6 +86,7 @@ int main(int argc, char* argv[]) {
   const size_t VEC_WIDTH = 1024 * 1024 * args.vecwidth;
 
   std::unique_ptr<double[]> c;
+  std::unique_ptr<double[]> c2;
 
   std::unique_ptr<int[]> mod_opt(new int[4]);
   mod_opt[0] = args.cpu_only;
@@ -97,12 +95,13 @@ int main(int argc, char* argv[]) {
   mod_opt[3] = args.gpu_cpu;
 
   c.reset(new (std::align_val_t(64)) double[VEC_WIDTH]);
+  c2.reset(new (std::align_val_t(64)) double[VEC_WIDTH]);
 
   std::cout << "Working memory size: " << args.vecwidth * sizeof(double) << "MB"
             << std::endl;
   std::cout << "Total threads: " << hardware_concurrency << std::endl;
 
-  mixbenchCPU(c.get(), VEC_WIDTH, mod_opt.get());
+  mixbenchCPU(c.get(), c2.get(), VEC_WIDTH, mod_opt.get());
 
   return 0;
 }
