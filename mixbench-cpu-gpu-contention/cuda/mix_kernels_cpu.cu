@@ -541,14 +541,15 @@ void runbench_range_gc(double* cd, double* c, long size, unsigned int compute_it
 }
 
 
-void mixbenchCPU(double* c, size_t size, int* mod_opt) {
+void mixbenchCPU(double* c, double* c2, size_t size, int* mod_opt) {
 // Initialize data to zeros on memory by respecting 1st touch policy
-//#pragma omp parallel for schedule(static)
+#pragma omp parallel for schedule(static)
   for (size_t i = 0; i < size; i++)
     //c[i] = 1.0 + ( (double)(rand()) / (double)(RAND_MAX) );
     //c[i] = 0.1*(-1.0 + ( 2.0*(double)(rand()) / (double)(RAND_MAX) ));  
     c[i] = 0.0;
 
+  std::cout << "Test with zero values" << std::endl; 
   std::cout << "--------------------------------------------"
                "-------------- CSV data "
                "--------------------------------------------"
@@ -556,25 +557,36 @@ void mixbenchCPU(double* c, size_t size, int* mod_opt) {
             << std::endl;
   std::cout << "Experiment ID, Double Precision ops,,,,              "
             << std::endl;
-  std::cout << "CPU or GPU, Compute iters, Flops/byte, ex.time,  GFLOPS, GB/sec, "
-            << std::endl;
+  //std::cout << "CPU or GPU, Compute iters, Flops/byte, ex.time,  GFLOPS, GB/sec, "<< std::endl;
 
 
   double* cd;
-  double* cd_c;
+  double* cd_mm; 
+  double* cd_mh;
+  double* cd_c; 
+  double* cd_mm_c; 
+  double* cd_mh_c;
 
-  //CUDA_SAFE_CALL(cudaMalloc((void**)&cd, size * sizeof(double)));
-  CUDA_SAFE_CALL(cudaMallocHost((void**)&cd_c, size * sizeof(double)));
-  CUDA_SAFE_CALL(cudaMallocHost((void**)&cd, size * sizeof(double)));
-  //CUDA_SAFE_CALL(cudaMallocManaged((void**)&cd, size * sizeof(double)));
-  //CUDA_SAFE_CALL(cudaMallocManaged((void**)&cd_c, size * sizeof(double)));
+  CUDA_SAFE_CALL(cudaMalloc((void**)&cd, size * sizeof(double)));
+  CUDA_SAFE_CALL(cudaMalloc((void**)&cd_c, size * sizeof(double)));
+  CUDA_SAFE_CALL(cudaMallocHost((void**)&cd_mh, size * sizeof(double)));
+  CUDA_SAFE_CALL(cudaMallocHost((void**)&cd_mh_c, size * sizeof(double)));
+  CUDA_SAFE_CALL(cudaMallocManaged((void**)&cd_mm, size * sizeof(double)));
+  CUDA_SAFE_CALL(cudaMallocManaged((void**)&cd_mm_c, size * sizeof(double)));
 
   // Copy data to device memory
-  //CUDA_SAFE_CALL(
-  //    cudaMemset(cd, 0, size * sizeof(double)));  // initialize to zeros
-  //CUDA_SAFE_CALL(
-  //    cudaMemset(cd_c, 0, size * sizeof(double)));  // initialize to zeros
-
+  CUDA_SAFE_CALL(
+      cudaMemset(cd, 0, size * sizeof(double)));  // initialize to zeros
+  CUDA_SAFE_CALL(
+      cudaMemset(cd_c, 0, size * sizeof(double)));  // initialize to zeros
+  CUDA_SAFE_CALL(
+      cudaMemset(cd_mm, 0, size * sizeof(double)));  // initialize to zeros
+  CUDA_SAFE_CALL(
+      cudaMemset(cd_mm_c, 0, size * sizeof(double)));  // initialize to zeros
+  CUDA_SAFE_CALL(
+      cudaMemset(cd_mh, 0, size * sizeof(double)));  // initialize to zeros
+  CUDA_SAFE_CALL(
+      cudaMemset(cd_mh_c, 0, size * sizeof(double)));  // initialize to zeros
 
   // Synchronize in order to wait for memory operations to finish
   CUDA_SAFE_CALL(cudaDeviceSynchronize());
@@ -584,29 +596,72 @@ void mixbenchCPU(double* c, size_t size, int* mod_opt) {
   //CUDA_SAFE_CALL(cudaMemcpy(cd_c, c, size * sizeof(double), cudaMemcpyHostToDevice));
   CUDA_SAFE_CALL(cudaDeviceSynchronize());
 
-  for (size_t i = 0; i < size; i++){
-    //cd[i] = 0.1*(-1.0 + ( 2.0*(double)(rand()) / (double)(RAND_MAX) ));  
-    cd[i] = 0.0;
-    cd_c[i] = 0.0;
-  }
-  //runbench_warmup(cd, size);
-  //runbench_warmup(cd_c, size);
-
   if (mod_opt[0]){
+    std::cout << "malloc FT CPU" << std::endl;
+    std::cout << "CPU or GPU, Compute iters, Flops/byte, ex.time,  GFLOPS, GB/sec, "<< std::endl;
     runbench_range_cpu<0, 1, 2, 3, 4, 6, 8, 12, 16, 20, 24, 28, 32, 40, 6 * 8, 7 * 8,
                   8 * 8, 10 * 8, 13 * 8, 15 * 8, 16 * 8, 20 * 8, 24 * 8, 32 * 8,
-                  40 * 8, 64 * 8>(cd_c, size);
+                  40 * 8, 64 * 8>(c, size);
+    std::cout << "malloc FT GPU" << std::endl;
+    runbench_warmup(c2, size);
+    std::cout << "CPU or GPU, Compute iters, Flops/byte, ex.time,  GFLOPS, GB/sec, "<< std::endl;
+    runbench_range_cpu<0, 1, 2, 3, 4, 6, 8, 12, 16, 20, 24, 28, 32, 40, 6 * 8, 7 * 8,
+                  8 * 8, 10 * 8, 13 * 8, 15 * 8, 16 * 8, 20 * 8, 24 * 8, 32 * 8,
+                  40 * 8, 64 * 8>(c2, size);    
+    std::cout << "cudamallocmanaged FT CPU" << std::endl;
+    for (size_t i = 0; i < size; i++) {cd_mm_c[i] = 0.0;}
+    std::cout << "CPU or GPU, Compute iters, Flops/byte, ex.time,  GFLOPS, GB/sec, "<< std::endl;
+    runbench_range_cpu<0, 1, 2, 3, 4, 6, 8, 12, 16, 20, 24, 28, 32, 40, 6 * 8, 7 * 8,
+                  8 * 8, 10 * 8, 13 * 8, 15 * 8, 16 * 8, 20 * 8, 24 * 8, 32 * 8,
+                  40 * 8, 64 * 8>(cd_mm_c, size); 
+    std::cout << "cudamallocmanaged FT GPU" << std::endl;
+    runbench_warmup(cd_mm, size);
+    std::cout << "CPU or GPU, Compute iters, Flops/byte, ex.time,  GFLOPS, GB/sec, "<< std::endl;
+    runbench_range_cpu<0, 1, 2, 3, 4, 6, 8, 12, 16, 20, 24, 28, 32, 40, 6 * 8, 7 * 8,
+                  8 * 8, 10 * 8, 13 * 8, 15 * 8, 16 * 8, 20 * 8, 24 * 8, 32 * 8,
+                  40 * 8, 64 * 8>(cd_mm, size);
+    std::cout << "cudamallocHost" << std::endl;
+    std::cout << "CPU or GPU, Compute iters, Flops/byte, ex.time,  GFLOPS, GB/sec, "<< std::endl;
+    runbench_range_cpu<0, 1, 2, 3, 4, 6, 8, 12, 16, 20, 24, 28, 32, 40, 6 * 8, 7 * 8,
+                  8 * 8, 10 * 8, 13 * 8, 15 * 8, 16 * 8, 20 * 8, 24 * 8, 32 * 8,
+                  40 * 8, 64 * 8>(cd_mh_c, size);
   }else if (mod_opt[1]){
-  //runbench_warmup(cd, size);
+    //runbench_range_gpu<0, 1, 2, 3, 4, 6, 8, 12, 16, 20, 24, 28, 32, 40, 6 * 8, 7 * 8,
+    //              8 * 8, 10 * 8, 13 * 8, 15 * 8, 16 * 8, 20 * 8, 24 * 8, 32 * 8,
+    //               40 * 8, 64 * 8>(cd, size);
+    std::cout << "malloc FT CPU" << std::endl;
+    std::cout << "CPU or GPU, Compute iters, Flops/byte, ex.time,  GFLOPS, GB/sec, "<< std::endl;
     runbench_range_gpu<0, 1, 2, 3, 4, 6, 8, 12, 16, 20, 24, 28, 32, 40, 6 * 8, 7 * 8,
                   8 * 8, 10 * 8, 13 * 8, 15 * 8, 16 * 8, 20 * 8, 24 * 8, 32 * 8,
-                   40 * 8, 64 * 8>(cd, size);
+                  40 * 8, 64 * 8>(c, size);
+    std::cout << "malloc FT GPU" << std::endl;
+    runbench_warmup(c2, size);
+    std::cout << "CPU or GPU, Compute iters, Flops/byte, ex.time,  GFLOPS, GB/sec, "<< std::endl;
+    runbench_range_gpu<0, 1, 2, 3, 4, 6, 8, 12, 16, 20, 24, 28, 32, 40, 6 * 8, 7 * 8,
+                  8 * 8, 10 * 8, 13 * 8, 15 * 8, 16 * 8, 20 * 8, 24 * 8, 32 * 8,
+                  40 * 8, 64 * 8>(c2, size);
+    std::cout << "cudamallocmanaged FT CPU" << std::endl;
+    for (size_t i = 0; i < size; i++) {cd_mm_c[i] = 0.0;}
+    std::cout << "CPU or GPU, Compute iters, Flops/byte, ex.time,  GFLOPS, GB/sec, "<< std::endl;
+    runbench_range_gpu<0, 1, 2, 3, 4, 6, 8, 12, 16, 20, 24, 28, 32, 40, 6 * 8, 7 * 8,
+                  8 * 8, 10 * 8, 13 * 8, 15 * 8, 16 * 8, 20 * 8, 24 * 8, 32 * 8,
+                  40 * 8, 64 * 8>(cd_mm_c, size);
+    std::cout << "cudamallocmanaged FT GPU" << std::endl;
+    runbench_warmup(cd_mm, size);
+    std::cout << "CPU or GPU, Compute iters, Flops/byte, ex.time,  GFLOPS, GB/sec, "<< std::endl;
+    runbench_range_gpu<0, 1, 2, 3, 4, 6, 8, 12, 16, 20, 24, 28, 32, 40, 6 * 8, 7 * 8,
+                  8 * 8, 10 * 8, 13 * 8, 15 * 8, 16 * 8, 20 * 8, 24 * 8, 32 * 8,
+                  40 * 8, 64 * 8>(cd_mm, size);
+    std::cout << "cudamallocHost" << std::endl;
+    std::cout << "CPU or GPU, Compute iters, Flops/byte, ex.time,  GFLOPS, GB/sec, "<< std::endl;
+    runbench_range_gpu<0, 1, 2, 3, 4, 6, 8, 12, 16, 20, 24, 28, 32, 40, 6 * 8, 7 * 8,
+                  8 * 8, 10 * 8, 13 * 8, 15 * 8, 16 * 8, 20 * 8, 24 * 8, 32 * 8,
+                  40 * 8, 64 * 8>(cd_mh, size);    
   }else if (mod_opt[2]){
     unsigned int cpu_f = 32 * 8;
     runbench_range_cg<0, 1, 2, 3, 4, 6, 8, 12, 16, 20, 24, 28, 32, 40, 6 * 8, 7 * 8,
                   8 * 8, 10 * 8, 13 * 8, 15 * 8, 16 * 8, 20 * 8, 24 * 8, 32 * 8,
                    40 * 8, 64 * 8>(cd, cd_c, size, cpu_f);
-    //runbench_range_cg<2>(cd, c, size, cpu_f);
     
   }else if (mod_opt[3]){
     unsigned int gpu_f = 32 * 8;
