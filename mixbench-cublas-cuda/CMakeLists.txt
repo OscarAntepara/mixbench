@@ -1,0 +1,33 @@
+cmake_minimum_required(VERSION 3.8 FATAL_ERROR)
+project(mixbench LANGUAGES CXX CUDA)
+
+find_package(CUDAToolkit REQUIRED)
+# Include CUDA header directory in cpp files
+include_directories(${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
+
+set(CMAKE_CUDA_ARCHITECTURES 80)
+
+string(APPEND CMAKE_CUDA_FLAGS " -Xptxas=-v")
+string(APPEND CMAKE_CUDA_FLAGS " -Wno-deprecated-gpu-targets")
+string(APPEND CMAKE_CUDA_FLAGS " --cudart=static")
+string(APPEND CMAKE_CUDA_FLAGS " -gencode arch=compute_80,code=[sm_80,compute_80] -gencode arch=compute_80,code=compute_80 -lcublas")
+
+# Get version info from git tag
+execute_process(COMMAND git describe --tags --always
+                OUTPUT_VARIABLE GIT_REV
+                ERROR_QUIET)
+
+if ("${GIT_REV}" STREQUAL "")
+    set(GIT_REV "")
+endif()
+string(STRIP "${GIT_REV}" GIT_REV)
+file(WRITE "version_info.h" "#define VERSION_INFO \"")
+file(APPEND "version_info.h" ${GIT_REV})
+file(APPEND "version_info.h" "\"")
+
+add_executable(mixbench-cublas-cuda main-cuda.cpp mix_kernels_cuda.h lcutil.h version_info.h mix_kernels_cuda.cu mix_kernels_cuda.h lcutil.h)
+
+target_link_libraries(mixbench-cublas-cuda PRIVATE CUDA::cublas)
+
+target_compile_features(mixbench-cublas-cuda PUBLIC cxx_std_17)
+
